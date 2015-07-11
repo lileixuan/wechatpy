@@ -9,6 +9,7 @@ from wechatpy.session.memorystorage import MemoryStorage
 from wechatpy._compat import json
 from wechatpy.exceptions import WeChatClientException, APILimitedException
 from wechatpy.client.api.base import BaseWeChatAPI
+from wechatpy.signals import access_token_granted, access_token_expired
 
 
 class BaseWeChatClient(object):
@@ -76,6 +77,8 @@ class BaseWeChatClient(object):
             errmsg = result['errmsg']
             if errcode == 42001:
                 # access_token expired, fetch a new one and retry request
+                access_token_expired.send(self,
+                                          access_token=kwargs['access_token'])
                 self.fetch_access_token()
                 kwargs['params']['access_token'] = self.session.get(
                     'access_token'
@@ -127,6 +130,9 @@ class BaseWeChatClient(object):
             expires_in = result['expires_in']
         self.session.set('access_token', result['access_token'], expires_in)
         self.expires_at = int(time.time()) + expires_in
+        access_token_granted.send(self,
+                                  access_token=result['access_token'],
+                                  expires_in=expires_in)
         return result
 
     def fetch_access_token(self):
@@ -144,6 +150,8 @@ class BaseWeChatClient(object):
             timestamp = time.time()
             if self.expires_at - timestamp > 60:
                 return access_token
+            else:
+                access_token_expired.send(self, access_token=access_token)
 
         self.fetch_access_token()
         return self.session.get('access_token')
